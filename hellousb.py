@@ -8,6 +8,7 @@ class hellousb:
         self.SET_VALS = 1
         self.GET_VALS = 2
         self.PRINT_VALS = 3
+        self.PING_OUT = 4
         self.dev = usb.core.find(idVendor = 0x6666, idProduct = 0x0003)
         if self.dev is None:
             raise ValueError('no USB device found matching idVendor = 0x6666 and idProduct = 0x0003')
@@ -41,4 +42,10 @@ class hellousb:
             self.dev.ctrl_transfer(0x40, self.PRINT_VALS)
         except usb.core.USBError:
             print "Could not send PRINT_VALS vendor request."
+
+    def ping_out(self):
+        try:
+            self.dev.ctrl_transfer(0x40, self.PING_OUT)
+        except usb.core.USBError:
+            print "Could not send ping request"
 
