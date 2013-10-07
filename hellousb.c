@@ -12,16 +12,19 @@
 #define SET_VALS    1   // Vendor request that receives 2 unsigned integer values
 #define GET_VALS    2   // Vendor request that returns 2 unsigned integer values
 #define PRINT_VALS  3   // Vendor request that prints 2 unsigned integer values 
-#define PING_OUT    4   // Vendor request that prints 2 unsigned integer values 
+#define PING_OUT    4   
+#define TEST        5
+#define READ_PING   6
 
 
 // #define RX_THRESH 0.00073
-#define RX_THRESH 0.0
+#define RX_HTHRESH 16000
+#define RX_LTHRESH 250
 #define TX_PERIOD 0.005
 #define RX_TMOUT 0.070
 
 uint16_t val1, val2;
-float TOF;
+uint16_t TOF,hit;
 
 
 //void ClassRequests(void) {
@@ -31,10 +34,30 @@ float TOF;
 //    }
 //}
 
-void pwm_clear(_TIMER *timer){
+void echo_listen(_TIMER *timer){
     // printf("timer disabled\n");
     oc_free(&oc3);
     timer_stop(timer);
+
+    timer_setPeriod(&timer4,RX_TMOUT); //change period later
+    TOF=0;
+    hit=0;
+    timer_start(&timer4);
+    while(TOF< RX_HTHRESH){
+        TOF=timer_read(&timer4);
+        // printf("tof: %u\n",TOF);
+        if(TOF<RX_LTHRESH){
+            continue;
+        }
+        if(pin_read(&D[3])==1){
+            hit=1;
+            break;
+        }
+    }
+
+    printf("TOF : %u    \n", TOF);
+    printf("\n\n\n\n");
+
 }
 
 void VendorRequests(void) {
@@ -57,7 +80,7 @@ void VendorRequests(void) {
             BD[EP0IN].address[0] = temp.b[0];
             BD[EP0IN].address[1] = temp.b[1];
             temp.w = val2;
-            // BD[EP0IN].address[2] = temp.b[0];
+            BD[EP0IN].address[2] = temp.b[0];
             BD[EP0IN].address[3] = temp.b[1];
             BD[EP0IN].bytecount = 4;    // set EP0 IN byte count to 4
             BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
@@ -70,33 +93,23 @@ void VendorRequests(void) {
         case PING_OUT:
             oc_pwm(&oc3, &D[2], NULL, 40000, 32768);
             // void timer_after(_TIMER *self, float delay, uint16_t num_times,void (*callback)(_TIMER *self))
-            timer_after(&timer3,TX_PERIOD,1,pwm_clear);
-            timer_setPeriod(&timer4,RX_TMOUT); //change period later
-            TOF=0.0;
-            printf("timer period: %f\n",timer_period(&timer4));
-            timer_start(&timer4);
-            uint16_t maxTicks = 65535;
-            uint16_t minTicks = ((TX_PERIOD)*65535/RX_TMOUT);
-            while(TOF< maxTicks){
-                TOF=timer_read(&timer4);
-                printf("tof: %u\n",TOF);
-                if(TOF<minTicks){
-                    // printf("not within threshold range: %f \n", TOF);
-                    continue;
-                }
-                if(pin_read(&D[3])==1){
-                    // printf('signal read %f',.00004);
-                    // TOF=timer_time(&timer4);
-                    printf("pin 3 high\n");
-                    break;
-                }
-            }
-
-            printf("TOF : %u    \n", TOF);
-            printf("\n\n\n\n");
+            timer_after(&timer3,TX_PERIOD,1,echo_listen);
 
             BD[EP0IN].bytecount = 0;    // set EP0 IN byte count to 0 
             BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
+            break;
+        case TEST:
+            oc_pwm(&oc3, &D[2], NULL, 40000, 32768);
+        case READ_PING:
+            temp.w = TOF;
+            BD[EP0IN].address[0] = temp.b[0];
+            BD[EP0IN].address[1] = temp.b[1];
+            temp.w = hit;
+            BD[EP0IN].address[2] = temp.b[0];
+            BD[EP0IN].address[3] = temp.b[1];
+            BD[EP0IN].bytecount = 4;    // set EP0 IN byte count to 4
+            BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
+            break; 
         default:
             USB_error_flags |= 0x01;    // set Request Error Flag
     }
